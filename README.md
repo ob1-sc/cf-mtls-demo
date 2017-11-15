@@ -140,6 +140,8 @@ public class HttpSecurityConfig extends WebSecurityConfigurerAdapter {
 
 If we call either the ***/user*** or ***/headers*** end point in the secure-server app, we will get a 403 Forbidden exception as no client certificate is present.
 
+## Step 10 - Test access to secured app with client certificate
+
 To autheticate we can add our Client Certificate in Firefox security settings:
 
 Now when we call either the ***/user*** or ***/headers*** end point we will be prompted for our Client Certificate, once selected the app will authenticate joe.bloggs@acme.com and allow access.
