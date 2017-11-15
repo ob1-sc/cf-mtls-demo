@@ -1,0 +1,5 @@
+---
+applications:
+  - name: insecure-server
+    memory: 1024M
+    path: target/insecure-server-1.0-SNAPSHOT.jar
