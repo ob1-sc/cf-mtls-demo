@@ -6,22 +6,22 @@ Prior to the introduction of mTLS using XFCC and the Java Buildpack Client Certi
 
 This walkthrough aims to show a basic configuration of the new features using Cloud Foundry on bosh-lite with a simple Spring Boot application. In the walkthrough, we are using Cloud Foundry with SSL/TLS termated at the gorouter
 
-
 ## Step 1 - Download Example Source Code 
 
     $ cd [GITHUB HOME]
     $ git clone https://github.com/ob-sc/cf-xfcc-demo
 
-
 ## Step 2 - Deploy Cloud Foundry using bosh-lite (BOSH2)
+
 For windows environments see: https://github.com/goettw/bosh-lite-windows-bosh-client2
 
 For linux environments see: http://www.starkandwayne.com/blog/bosh-lite-on-virtualbox-with-bosh2/
 
 ## Step 3 - Ensure SSL/TLS termination at gorouter only
+
 The [cf-deployment.yml](https://github.com/cloudfoundry/cf-deployment/blob/master/cf-deployment.yml) should already be correctly configured based on the [instructions in the Cloud Foundry Admin Guide](https://docs.cloudfoundry.org/adminguide/securing-traffic.html#gorouter_term) 
 
-```
+```yaml
   - name: gorouter
     release: routing
     properties:
@@ -34,8 +34,10 @@ The [cf-deployment.yml](https://github.com/cloudfoundry/cf-deployment/blob/maste
 ```
 
 ## Step 4 - Ensure Client Certificates are mapped to XFCC header
+
 Applications that require mutual TLS (mTLS) need metadata from client certificates to authorize requests. Cloud Foundry supports this use case without bypassing layer-7 load balancers and the Gorouter. The following configuration will ensure Client Certificates are mapped to the XFCC header when the gorouter is configured to terminate SSL/TLS.
-```
+
+```yaml
   - name: gorouter
     release: routing
     properties:
@@ -48,10 +50,12 @@ Applications that require mutual TLS (mTLS) need metadata from client certificat
 
 
 ## Step 6 - Add certificate authority to validate certificates during mTLS handshake
+
 We will add our client certificate authority to the list of authorities used to validate certificates provided by remote systems during mTLS handshakes. Note, this does not mean that all apps will be forced to provide a client certificate as by default the gorouter is configured to only ask for a client certifcate to be presented if it is available. We will see in a later step that we are still able to access applications even if a Client Certificate is not available.
 
 Modify the gorouter configuration as follows:
-```
+
+```yaml
   - name: gorouter
     release: routing
     properties:
@@ -60,11 +64,13 @@ Modify the gorouter configuration as follows:
 ```
 
 ## Step 7 - Redeploy with config changes
+
 Redeploy with the new configuration and providing your ca_certs in a var file:
 
 	$ bosh -d cf deploy ~/workspace/cf-deployment/cf-deployment.yml --var-file <PATH TO GENERATED CERTS>/router_ca_certs=ca_certs.txt -o ~/workspace/cf-deployment/operatio ns/bosh-lite.yml --vars-store ~/deployments/vbox/deployment-vars.yml -v system_domain=bosh-lite.com
 	
 ## Step 8 - Test access to app without client certificate
+
 The insecure server is a simple Spring Boot application that is configured that exposese a simple ***/header*** endpoint that when called (GET request) will return the all available headers. To package and deploy the app (assuming you have targeted your bosh-lite CF deployment):
 
     $ cd [GITHUB HOME]/cf-mtls-demo/insecure-server
@@ -74,19 +80,23 @@ The insecure server is a simple Spring Boot application that is configured that 
 Using a web browser (tested with Firefox), browse to https://insecure-server.bosh-lite.com/headers (assuming your cf deployment system domain is bosh-lite.com). Even thought the router is configured with the additional certificate authority you should not be prompted to present a client certificate (you will need to accept the server certificate though), you should see all available headers.
 
 ## Step 9 - Test access to secured app without client certificate
+
 The secure server is a simple Spring Boot application that is configured to only authenticate the user joe.bloggs@acme.com from a client certificate (using X509 based pre-authenticate). The app exposese a simple ***/user*** endpoint that when called (GET request) will return the user name as well as a simple ***/header*** endpoint that when called (GET request) will return the all available headers.
 
 The main differences between the insecure-server and secure-server apps are as follows:
 
 - Additional Spring Security Dependency:
-```
+
+```xml
 <dependency>
 	<groupId>org.springframework.boot</groupId>
 	<artifactId>spring-boot-starter-security</artifactId>
 </dependency>
 ```
+
 - Security configuration to check for a valid user from the X509 certificate (in our case joe.bloggs@acme.com), note the [Java Buildpack Client Certificate mapper](https://github.com/cloudfoundry/java-buildpack-client-certificate-mapper/) Servlet filter maps the X-Forwarded-Client-Cert to the javax.servlet.request.X509Certificate Servlet attribute we are using to authenticate:
-```
+
+```java
 @EnableWebSecurity
 public class HttpSecurityConfig extends WebSecurityConfigurerAdapter {
 
@@ -117,8 +127,10 @@ public class HttpSecurityConfig extends WebSecurityConfigurerAdapter {
     }
 }
 ```
+
 - Additional ***/user*** end point that prints the username:
-```
+
+```java
     @RequestMapping(value = "/user")
     public String user(@RequestHeader HttpHeaders headers, Principal principal) {
         UserDetails currentUser = (UserDetails) ((Authentication) principal).getPrincipal();
