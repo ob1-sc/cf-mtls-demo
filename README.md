@@ -79,26 +79,22 @@ Modify your GoRouter configuration in the ***cf-deployment.yml*** as follows, th
 
 ### Step 6 - Generate a Client Certificate and Authority
 
+A convenience script has been included in the github repo to create the appropriate keys/authorities/stores/certificates. To run the script and generate the artifacts:
+
+	$ cd [GITHUB HOME]/cf-mtls-demo/certs
+    $ chmod +x gen_certs.sh
+    $ ./gen_certs.sh
+
+At a high level the included script performs the following actions using the Java keytool:
+
 1. Create Keystore with a Certificate Authority (keystore.jks)
-
-        $ make create-keystore PASSWORD=changeme
-
 2. Export Certificate Authority (ca.crt)
-
-        $ make export-authority
-
 3. Create a Truststore (truststore.jks)
-
-        $ make create-truststore PASSWORD=changeme
-
 4. Create Client Certificate for Joe Bloggs (joe.crt)
-
-        $ make add-client CLIENTNAME=joe PASSWORD=changeme
-
 
 ### Step 7 - Add Certificate Authority to validate certificates during mTLS handshake
 
-We will add our Client Certificate Authority to the list of authorities used to validate certificates provided by remote systems during mTLS handshakes. 
+We will add our Client Certificate Authority (***ca.crt***) to the list of authorities used to validate certificates provided by remote systems during mTLS handshakes. 
 
 Modify the GoRouter configuration as follows:
 
