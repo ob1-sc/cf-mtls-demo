@@ -6,6 +6,13 @@ Prior to the introduction of mTLS using XFCC and the Java Buildpack Client Certi
 
 This walkthrough aims to show a basic configuration of the new features using Cloud Foundry on bosh-lite with a simple Spring Boot application. In the walkthrough, we are using Cloud Foundry with SSL/TLS terminated at the GoRouter
 
+### Prerequisites
+
+- git installed
+- Java keytool on your path (keytool is in Java bin)
+- Maven installed and on your path
+- Cloud Foundry command line client installed
+
 ### Step 1 - Download Example Source Code 
 
     $ cd [GITHUB HOME]
@@ -17,7 +24,29 @@ For windows environments see: https://github.com/goettw/bosh-lite-windows-bosh-c
 
 For Linux environments see: http://www.starkandwayne.com/blog/bosh-lite-on-virtualbox-with-bosh2/
 
-### Step 3 - Ensure SSL/TLS termination at GoRouter only
+### Step 3 - Setup your Cloud Foundry deployment
+
+1. Login
+
+        $ cf login -a api.bosh-lite.com -u admin --skip-ssl-validation
+
+2. Create Org
+
+        $ cf create-org demos
+
+3. Target Org
+
+        $ cf t -o demos
+
+4. Create Space
+
+        $ cf create-space mtls
+
+5. Target Space
+
+        $ cf t -s mtls
+
+### Step 4 - Ensure SSL/TLS termination at GoRouter only
 
 Check that the [cf-deployment.yml](https://github.com/cloudfoundry/cf-deployment/blob/master/cf-deployment.yml) is correctly configured based on the [instructions in the Cloud Foundry Admin Guide](https://docs.cloudfoundry.org/adminguide/securing-traffic.html#gorouter_term):
 
@@ -33,9 +62,11 @@ Check that the [cf-deployment.yml](https://github.com/cloudfoundry/cf-deployment
       
 ```
 
-### Step 4 - Ensure Client Certificates are mapped to XFCC header
+### Step 5 - Ensure Client Certificates are mapped to XFCC header
 
-Applications that require mutual TLS (mTLS) need metadata from Client Certificates to authorize requests. Cloud Foundry supports this use case without bypassing layer-7 load balancers and the GoRouter. The following configuration will ensure Client Certificates are mapped to the XFCC header when the GoRouter is configured to terminate SSL/TLS.
+Applications that require mutual TLS (mTLS) need metadata from Client Certificates to authorize requests. Cloud Foundry supports this use case without bypassing layer-7 load balancers and the GoRouter. 
+
+Modify your GoRouter configuration in the ***cf-deployment.yml*** as follows, this will ensure Client Certificates are mapped to the XFCC header when the GoRouter is configured to terminate SSL/TLS:
 
 ```yaml
   - name: gorouter
@@ -46,12 +77,30 @@ Applications that require mutual TLS (mTLS) need metadata from Client Certificat
       
 ```
 
-### Step 5 - Generate a Client Certificate and Authority
+### Step 6 - Generate a Client Certificate and Authority
+
+1. Create Keystore with a Certificate Authority (keystore.jks)
+
+        $ make create-keystore PASSWORD=changeme
+
+2. Export Certificate Authority (ca.crt)
+
+        $ make export-authority
+
+3. Create a Truststore (truststore.jks)
+
+        $ make create-truststore PASSWORD=changeme
+
+4. Create Client Certificate for Joe Bloggs (joe.crt)
+
+        $ make add-client CLIENTNAME=joe PASSWORD=changeme
 
 
-### Step 6 - Add Certificate Authority to validate certificates during mTLS handshake
+### Step 7 - Add Certificate Authority to validate certificates during mTLS handshake
 
-We will add our Client Certificate Authority to the list of authorities used to validate certificates provided by remote systems during mTLS handshakes. Modify the GoRouter configuration as follows:
+We will add our Client Certificate Authority to the list of authorities used to validate certificates provided by remote systems during mTLS handshakes. 
+
+Modify the GoRouter configuration as follows:
 
 ```yaml
   - name: gorouter
@@ -61,23 +110,27 @@ We will add our Client Certificate Authority to the list of authorities used to 
         ca_certs: "((router_ca_certs))"
 ```
 
+Copy your generated Certificate Authority ***ca.crt*** to the same directory as your ***cf-deployment.yml***
+
 ---
 **NOTE**
 
-Given the the GoRouter is initiating the mTLS handshake does this mean that all apps have to present a Client Certificate? The answer is no as by default the GoRouter is configured to only ask for a Client Certificate to be presented if it is available. We will see in a later step that we are still able to access applications even if a Client Certificate is not available.
+Given the the GoRouter is initiating the mTLS handshake does this mean that all apps have to present a Client Certificate? The answer is no as by default the GoRouter is configured to only ask for a Client Certificate to be presented if it is available. We will see in a later step that we are still able to access non-X509 applications even if a Client Certificate is not available.
 
 ---
 
-### Step 7 - Redeploy with config changes
+### Step 8 - Redeploy with config changes
 
-Redeploy with the new configuration and providing your ca_certs in a var file (note the additional ***--var-file <PATH TO GENERATED CERTS>/router_ca_certs=ca_certs.txt*** flag):
+Redeploy with the new configuration and providing your ca_certs in a var file (note the additional ***--var-file router_ca_certs=ca.crt*** flag):
 
-	$ bosh -d cf deploy ~/workspace/cf-deployment/cf-deployment.yml --var-file <PATH TO GENERATED CERTS>/router_ca_certs=ca_certs.txt -o ~/workspace/cf-deployment/operatio ns/bosh-lite.yml --vars-store ~/deployments/vbox/deployment-vars.yml -v system_domain=bosh-lite.com
+	$ bosh -d cf deploy ~/workspace/cf-deployment/cf-deployment.yml --var-file router_ca_certs=ca.crt -o ~/workspace/cf-deployment/operations/bosh-lite.yml --vars-store ~/deployments/vbox/deployment-vars.yml -v system_domain=bosh-lite.com
 	
 
-### Step 8 - Test access to app without Client Certificate
+### Step 9 - Test access to app without Client Certificate
 
-The insecure server is a simple Spring Boot application that exposes a simple ***/header*** endpoint that when called (***GET*** request) will return all available headers. To package and deploy the app (assuming you have targeted your bosh-lite CF deployment):
+The insecure server is a simple Spring Boot application that exposes a simple ***/header*** endpoint that when called (***GET*** request) will return all available headers. 
+
+To package and deploy the Insecure Server app (assuming you have targeted your bosh-lite CF deployment):
 
     $ cd [GITHUB HOME]/cf-mtls-demo/insecure-server
     $ mvn clean package
@@ -93,15 +146,18 @@ Even thought the GoRouter is configured with the additional Certificate Authorit
 
 ---
 
-### Step 9 - Test access to secured app without Client Certificate
+### Step 10 - Test access to secured app without Client Certificate
 
 The secure server is a simple Spring Boot application that is configured to only authenticate the user ***joe.bloggs@acme.com*** from a Client Certificate (using X509 based pre-authenticate). 
 
-The app exposes a simple ***/user*** endpoint that when called (***GET*** request) will return the user name as well as a simple ***/header*** endpoint that when called (***GET***
+The app exposes a simple ***/user*** endpoint that when called (***GET*** request) will return the user name as well as a simple ***/header*** endpoint that when called (***GET*** request) will return the all available headers.
 
-***
+To package and deploy the Secure Server app (assuming you have targeted your bosh-lite CF deployment):
 
- request) will return the all available headers.
+    $ cd [GITHUB HOME]/cf-mtls-demo/secure-server
+    $ mvn clean package
+    $ cf push
+    
 
 The main differences between the insecure-server and secure-server apps are as follows:
 
@@ -167,9 +223,13 @@ The [Java Buildpack Client Certificate mapper](https://github.com/cloudfoundry/j
 
 If we call either the ***/user*** or ***/headers*** end point in the secure-server app, we will get a 403 Forbidden exception as no Client Certificate is present.
 
-### Step 10 - Test access to secured app with client certificate
+### Step 11 - Test access to secured app with Client Certificate
 
-To authenticate we can add our Client Certificate in Firefox security settings:
+To authenticate we can add our ***joe.p12*** private key in Firefox security settings:
+
+1. Settings => Privacy & Security => Certificates => Ask you every time = ***true***
+2. Settings => Privacy & Security => Certificates => View Certificates => Import
+3. Clear cache/history and restart Firefox
 
 Now when we call either the ***/user*** or ***/headers*** end point we will be prompted for our Client Certificate, once selected the app will authenticate joe.bloggs@acme.com and allow access.
 
